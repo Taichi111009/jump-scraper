@@ -1,1 +1,71 @@
+name: Jump Scraper Automation
 
+on:
+  schedule:
+    - cron: '0 15 * * *' # 日本時間 0:00 (UTC 15:00) に毎日実行
+  workflow_dispatch:     # 手動実行ボタン（テスト用）
+
+jobs:
+  scrape-and-upload:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. コードのチェックアウト
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # 2. Java環境のセットアップ
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      # 3. スクレイピング実行
+      - name: Run Scraper
+        run: |
+          mkdir output
+          # コンパイル
+          javac -cp ".:libs/jsoup-1.16.1.jar" -d . src/JumpScraper.java
+          # 実行 (出力をファイルに保存)
+          java -cp ".:libs/jsoup-1.16.1.jar" JumpScraper > output/episode_data.json
+          
+          # JSONが空ならエラーにする（空ファイルをアップロードしないための安全策）
+          if [ ! -s output/episode_data.json ]; then
+            echo "Error: Output JSON is empty."
+            exit 1
+          fi
+
+      # 4. rclone のセットアップ
+      - name: Setup Rclone
+        uses: animos-x/install-rclone-action@v1
+        with:
+          version: v1.62.2
+
+      # 5. サービスアカウントJSONの生成とrclone設定
+      - name: Configure Rclone
+        env:
+          GDRIVE_SA_KEY: ${{ secrets.GDRIVE_SA_KEY }}
+        run: |
+          # SecretsからJSONキーを復元
+          echo "$GDRIVE_SA_KEY" > sa_key.json
+          
+          # rcloneの設定ファイルを作成 (サービスアカウントモード)
+          mkdir -p ~/.config/rclone
+          cat <<EOF > ~/.config/rclone/rclone.conf
+          [gdrive]
+          type = drive
+          scope = drive
+          service_account_file = $(pwd)/sa_key.json
+          EOF
+
+      # 6. Googleドライブへアップロード
+      - name: Upload to Google Drive
+        env:
+          FOLDER_ID: ${{ secrets.TARGET_FOLDER_ID }}
+        run: |
+          # copyto を使うと上書き保存、copy だとファイルがあればスキップ等の挙動になる
+          # ここでは「同名ファイルがあれば上書き」する挙動にします
+          rclone copyto output/episode_data.json gdrive: --drive-root-folder-id $FOLDER_ID
+
+          echo "Upload complete."
