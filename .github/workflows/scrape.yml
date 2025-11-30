@@ -1,37 +1,26 @@
-name: Jump Scraper Automation
+name: Connection Test
 
 on:
-  schedule:
-    - cron: '0 15 * * *' # 日本時間 0:00 (UTC 15:00) に毎日実行
-  workflow_dispatch:     # 手動実行ボタン（テスト用）
+  workflow_dispatch: # 手動実行のみにする
 
 jobs:
-  scrape-and-upload:
+  test-connection:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. コードのチェックアウト
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # 2. Java環境のセットアップ
       - name: Set up JDK 17
         uses: actions/setup-java@v3
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      # 3. スクレイピング実行
-      - name: Run Scraper
+      - name: Run Scraper (Debug Mode)
         run: |
-          mkdir output
           # コンパイル
           javac -cp ".:libs/jsoup-1.16.1.jar" -d . src/JumpScraper.java
-          # 実行 (出力をファイルに保存)
-          java -cp ".:libs/jsoup-1.16.1.jar" JumpScraper > output/episode_data.json
           
-          # JSONが空ならエラーにする（空ファイルをアップロードしないための安全策）
-          if [ ! -s output/episode_data.json ]; then
-            echo "Error: Output JSON is empty."
-            exit 1
-          fi
+          # 【変更点】ファイル保存(>)をやめて、ログに直接表示させる
+          java -cp ".:libs/jsoup-1.16.1.jar" JumpScraper
